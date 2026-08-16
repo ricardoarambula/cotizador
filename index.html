@@ -155,10 +155,20 @@
     <div class="campo"><label>Nombre del proyecto</label><input id="proyecto"></div>
     <div class="campo"><label>Cliente</label><input id="cliente"></div>
     <div class="campo"><label>Detalles</label><input id="detalles" placeholder="Dirección, zona, notas"></div>
+    <div class="campo"><label>Metros lineales de cocina</label>
+      <input id="mlCocina" type="number" inputmode="decimal" step="0.1" value="0"></div>
+    <div class="calc" style="margin-bottom:16px">
+      <span>Días de fabricación</span><b id="verDiasFab">0</b></div>
+    <div class="calc" style="margin-bottom:16px">
+      <span>Días de instalación</span><b id="verDiasInst">0</b></div>
     <div class="fila">
-      <div class="campo"><label>Días de fabricación</label><input id="diasFabricacion" type="number" inputmode="numeric" value="5"></div>
-      <div class="campo"><label>Días de instalación</label><input id="diasInstalacion" type="number" inputmode="numeric" value="4"></div>
+      <div class="campo"><label>Días extra de fabricación</label>
+        <input id="diasFabricacionExtra" type="number" inputmode="numeric" min="0" value="0"></div>
+      <div class="campo"><label>Días extra de instalación</label>
+        <input id="diasInstalacionExtra" type="number" inputmode="numeric" min="0" value="0"></div>
     </div>
+    <p class="nota">Los días los calcula el sistema con los muebles capturados y los metros
+    lineales. Si la obra lo exige puedes agregar días extra; quedan registrados en la cotización.</p>
     <div class="campo"><label>Viáticos (solo si es fuera de la ciudad)</label>
       <div class="pesos"><input id="viaticos" class="dinero" inputmode="decimal" value="0"></div>
     </div>
@@ -224,6 +234,13 @@
   </section>
 
   <section id="s7">
+    <h2>Pedidos especiales</h2>
+    <p class="sub">Puerta especial, mueble especial, gabinete especial, maniobra especial. Agrega tantos como lleve la cocina.</p>
+    <div id="especiales"></div>
+    <button class="agregar" onclick="addEspecial()">+ Agregar pedido especial</button>
+  </section>
+
+  <section id="s8">
     <h2>LEDs</h2>
     <p class="sub">La cinta se calcula por metro lineal. El apagador se captura aparte: déjalo en cero si encienden desde apagador de pared.</p>
     <div class="fila">
@@ -245,14 +262,14 @@
     </div>
   </section>
 
-  <section id="s8">
+  <section id="s9">
     <h2>Electrodomésticos</h2>
     <p class="sub">Se cotizan con margen distinto al de fabricación.</p>
     <div id="electro"></div>
     <button class="agregar" onclick="addElectro()">+ Agregar electrodoméstico</button>
   </section>
 
-  <section id="s9">
+  <section id="s10">
     <h2>Resumen</h2>
     <p class="sub">Precio final del proyecto y esquema de pago.</p>
     <div class="resumen" id="detalleResumen"></div>
@@ -277,7 +294,7 @@
 // ============================================================
 var API = 'https://script.google.com/macros/s/AKfycbwvfn1u3GHJ0oSnNkRaSts5VYsBuvwHUHiT2Ez9-vh80KXD1WDQNaO03GV2Og3Klm8/exec';
 
-var PANTALLAS = ['Proyecto','Precios','Muebles','Cuarzo','Zoclo','Vistas','Accesorios','LEDs','Electro','Resumen'];
+var PANTALLAS = ['Proyecto','Precios','Muebles','Cuarzo','Zoclo','Vistas','Accesorios','Especiales','LEDs','Electro','Resumen'];
 var actual = 0, DATOS = null, calcTimer = null, ULTIMO = null;
 
 // Llama a la API por JSONP: es lo que evita los bloqueos de CORS
@@ -518,6 +535,24 @@ function addAccesorio(){
   activarDinero(d);
   d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
 }
+function addEspecial(){
+  var c = document.getElementById('especiales');
+  var d = document.createElement('div');
+  d.className = 'tarjeta';
+  d.innerHTML =
+    '<button class="quitar" onclick="this.parentNode.remove();recalcular()">&times;</button>' +
+    '<div class="campo"><label>Descripción del pedido especial</label>' +
+      '<input class="x-desc" placeholder="Puerta especial, gabinete especial, maniobra…"></div>' +
+    '<div class="fila">' +
+      '<div class="campo"><label>Cantidad</label><input class="x-cant" type="number" inputmode="numeric" value="1"></div>' +
+      '<div class="campo"><label>Precio unitario</label>' +
+        '<div class="pesos"><input class="x-precio dinero" inputmode="decimal" value="0"></div></div>' +
+    '</div>';
+  c.appendChild(d);
+  activarDinero(d);
+  d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
+}
+
 function addElectro(){
   var c = document.getElementById('electro');
   var d = document.createElement('div');
@@ -561,6 +596,14 @@ function recolectar(){
       precioUnitario: limpiar(t.querySelector('.a-precio').value)
     });
   });
+  var especiales = [];
+  document.querySelectorAll('#especiales .tarjeta').forEach(function(t){
+    especiales.push({
+      descripcion: t.querySelector('.x-desc').value,
+      cantidad: t.querySelector('.x-cant').value,
+      precioUnitario: limpiar(t.querySelector('.x-precio').value)
+    });
+  });
   var electrodomesticos = [];
   document.querySelectorAll('#electro .tarjeta').forEach(function(t){
     electrodomesticos.push({
@@ -572,12 +615,14 @@ function recolectar(){
   function v(id){ return document.getElementById(id).value; }
   return {
     proyecto: v('proyecto'), cliente: v('cliente'), vendedor: VENDEDOR, detalles: v('detalles'),
-    diasFabricacion: v('diasFabricacion'), diasInstalacion: v('diasInstalacion'),
+    mlCocina: v('mlCocina'),
+    diasFabricacionExtra: v('diasFabricacionExtra'),
+    diasInstalacionExtra: v('diasInstalacionExtra'),
     viaticos: valorDinero('viaticos'),
     muebles: muebles,
     cuarzoPlacas: v('cuarzoPlacas'), cuarzoMl: v('cuarzoMl'),
     zocloMl: v('zocloMl'),
-    vistas: vistas, accesorios: accesorios,
+    vistas: vistas, accesorios: accesorios, especiales: especiales,
     ledMl: v('ledMl'), tipoApagador: v('tipoApagador'),
     precioApagador: valorDinero('precioApagador'), detallesLed: v('detallesLed'),
     electrodomesticos: electrodomesticos
@@ -590,6 +635,11 @@ function recalcular(){
     api('calcular', recolectar(), function(r){
       ULTIMO = r;
       document.getElementById('totalVivo').textContent = money(r.total);
+      var df = Math.round(r.dias.fabricacion * 10) / 10;
+      document.getElementById('verDiasFab').textContent =
+        df + (df === 1 ? ' día' : ' días');
+      document.getElementById('verDiasInst').textContent =
+        r.dias.instalacion + (r.dias.instalacion === 1 ? ' día' : ' días');
       if(actual === PANTALLAS.length-1) pintarResumen();
     }, function(msg){ avisoError('No se pudo calcular: ' + msg); });
   }, 350);
@@ -604,6 +654,8 @@ function pintarResumen(){
     ['Subtotal', money(r.subtotal), false],
     ['IVA', money(r.iva), false],
     ['Total del proyecto', money(r.total), true],
+    ['Días de fabricación', (Math.round(r.dias.fabricacion*10)/10) + ' días', false],
+    ['Días de instalación', r.dias.instalacion + ' días', false],
     ['Anticipo (60%)', money(r.anticipo), false],
     ['Segundo pago (30%)', money(r.segundo), false],
     ['Finiquito (10%)', money(r.finiquito), false],
@@ -629,7 +681,7 @@ function guardar(){
   });
 }
 
-document.querySelectorAll('#s0 input, #s3 input, #s4 input, #s7 input, #s7 select, #s7 textarea')
+document.querySelectorAll('#s0 input, #s3 input, #s4 input, #s8 input, #s8 select, #s8 textarea')
   .forEach(function(el){ el.addEventListener('change', recalcular); });
 </script>
 </body>
