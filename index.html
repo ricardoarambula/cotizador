@@ -158,7 +158,7 @@
 <div id="acceso">
   <h1>Cotizador <span>Integral Design</span></h1>
   <p>Escribe tu PIN para entrar</p>
-  <input id="pin" class="pin" type="tel" inputmode="numeric" maxlength="8" autocomplete="off">
+  <input id="pin" class="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off">
   <button id="btnEntrar" onclick="entrar()">Entrar</button>
   <p id="errPin"></p>
 </div>
@@ -198,7 +198,6 @@
     </div>
     <p class="nota">Los días los calcula el sistema con los muebles capturados y los metros
     lineales. Si la obra lo exige puedes agregar días extra; quedan registrados en la cotización.</p>
-    <button class="agregar" style="margin-bottom:16px" onclick="diagnostico()">Probar conexión</button>
     <div class="campo"><label>Viáticos (solo si es fuera de la ciudad)</label>
       <div class="pesos"><input id="viaticos" class="dinero" inputmode="decimal" value="0"></div>
     </div>
@@ -221,10 +220,6 @@
     </div>
     <button class="agregar" onclick="guardarPrecios()">Guardar precios</button>
     <p class="ok" id="okPrecios"></p>
-    <p class="nota">
-      Bisagra $100 por pieza · LED $600 por ml · Zoclo $300 por ml.<br>
-      Vista o mampara: la mitad del precio del tablero de puertas por m².
-    </p>
   </section>
 
   <section id="s2">
@@ -257,8 +252,8 @@
   </section>
 
   <section id="s6">
-    <h2>Accesorios y especiales</h2>
-    <p class="sub">Accesorios, piezas especiales y herrajes especiales.</p>
+    <h2>Accesorios</h2>
+    <p class="sub">Bote de basura, charola cubertera, organizadores, esquineros y demás accesorios de catálogo.</p>
     <div id="accesorios"></div>
     <button class="agregar" onclick="addAccesorio()">+ Agregar</button>
   </section>
@@ -805,38 +800,6 @@ function cargarEnFormulario(d){
 // Convierte los datos al formato corto que viaja al servidor.
 // conTextos=false para calcular (las descripciones no afectan el precio),
 // true para guardar. Así una cocina de 50 muebles sigue cabiendo.
-// Diagnóstico: muestra exactamente qué pasa al llamar a la API.
-function diagnostico(){
-  var b = document.getElementById('aviso');
-  b.style.display = 'block';
-  b.onclick = function(){ b.style.display = 'none'; };
-  b.textContent = 'Probando…';
-
-  var carga;
-  try { carga = compactar(false); }
-  catch(e){ b.textContent = '1) compactar() falló: ' + (e && e.message ? e.message : e); return; }
-
-  var url = API + '?accion=calcular&pin=' + encodeURIComponent(PIN) +
-            '&datos=' + encodeURIComponent(JSON.stringify(carga));
-
-  b.textContent = '2) URL de ' + url.length + ' caracteres. Enviando…';
-
-  fetch(url, {method:'GET', credentials:'omit', redirect:'follow'})
-    .then(function(r){
-      return r.text().then(function(t){
-        return {status: r.status, ok: r.ok, texto: t};
-      });
-    })
-    .then(function(x){
-      b.textContent = '3) HTTP ' + x.status + ' · respuesta: ' +
-                      x.texto.substring(0, 400) + '   (toca para cerrar)';
-    })
-    .catch(function(e){
-      b.textContent = '3) fetch falló: ' + (e && e.message ? e.message : e) +
-                      '   (toca para cerrar)';
-    });
-}
-
 function compactar(conTextos){
   var d = recolectar();
   function txt(s){ return conTextos ? (s || '') : ''; }
@@ -954,7 +917,7 @@ function pintarResumen(){
     ['Anticipo (60%)', money(r.anticipo), false],
     ['Segundo pago (30%)', money(r.segundo), false],
     ['Finiquito (10%)', money(r.finiquito), false],
-    ['Tu comisión', money(r.comision), false],
+    ['Comisión de venta', money(r.comision), false],
     ['Muebles', r.conteo.muebles, false],
     ['Bisagras', r.conteo.bisagras + ' pzas', false],
     ['Cajones', r.conteo.cajones + ' pzas', false],
