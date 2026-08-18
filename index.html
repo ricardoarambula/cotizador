@@ -99,6 +99,27 @@
     border-bottom:1px solid var(--linea);font-variant-numeric:tabular-nums}
   .resumen .grande{font-size:19px;color:var(--papel);font-weight:600}
   .resumen .grande span:last-child{color:var(--roble-claro)}
+  .cot{background:var(--tinta-2);border:1px solid var(--linea);border-radius:3px;
+    padding:13px 14px;margin-bottom:9px;cursor:pointer;display:flex;
+    justify-content:space-between;align-items:center;gap:12px}
+  .cot:active{border-color:var(--roble)}
+  .cot .izq{min-width:0}
+  .cot .fol{font-family:'Barlow Condensed',sans-serif;color:var(--roble);
+    font-size:12px;letter-spacing:.09em}
+  .cot .pry{color:var(--papel);font-size:14.5px;margin:2px 0 1px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cot .meta{color:var(--tenue);font-size:11.5px}
+  .cot .tot{font-family:'Barlow Condensed',sans-serif;font-size:17px;
+    color:var(--roble-claro);white-space:nowrap;font-variant-numeric:tabular-nums}
+  #borrador{display:none;background:var(--tinta-2);border:1px solid var(--roble);
+    border-radius:3px;padding:13px;margin-bottom:18px;font-size:13.5px;line-height:1.5}
+  #borrador div{display:flex;gap:9px;margin-top:11px}
+  #borrador button{flex:1;padding:10px;border-radius:3px;cursor:pointer;
+    font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:.05em;
+    text-transform:uppercase;border:1px solid var(--linea);background:none;color:var(--tenue)}
+  #borrador button.si{background:var(--roble);border-color:var(--roble);
+    color:#1a1207;font-weight:600}
+  #folioActivo{color:var(--roble);font-size:11.5px;margin:0 0 14px;display:none}
   .ok{color:var(--verde);font-size:13px;margin-top:12px;min-height:18px}
   /* Pantalla de acceso */
   #acceso{position:fixed;inset:0;z-index:60;background:var(--tinta);
@@ -152,6 +173,14 @@
   <section id="s0" class="on">
     <h2>Proyecto</h2>
     <p class="sub">Datos generales y tiempos estimados.</p>
+    <div id="borrador">
+      Se quedó una cotización a medias en este dispositivo. ¿La retomas?
+      <div>
+        <button class="si" onclick="restaurarBorrador()">Retomar</button>
+        <button onclick="descartarBorrador()">Empezar de cero</button>
+      </div>
+    </div>
+    <p id="folioActivo"></p>
     <div class="campo"><label>Nombre del proyecto</label><input id="proyecto"></div>
     <div class="campo"><label>Cliente</label><input id="cliente"></div>
     <div class="campo"><label>Detalles</label><input id="detalles" placeholder="Dirección, zona, notas"></div>
@@ -270,6 +299,13 @@
   </section>
 
   <section id="s10">
+    <h2>Guardadas</h2>
+    <p class="sub" id="subGuardadas">Abre una cotización anterior para revisarla o modificarla.</p>
+    <button class="agregar" onclick="cargarLista()">Actualizar lista</button>
+    <div id="listaCot" style="margin-top:14px"></div>
+  </section>
+
+  <section id="s11">
     <h2>Resumen</h2>
     <p class="sub">Precio final del proyecto y esquema de pago.</p>
     <div class="resumen" id="detalleResumen"></div>
@@ -294,7 +330,7 @@
 // ============================================================
 var API = 'https://script.google.com/macros/s/AKfycbwvfn1u3GHJ0oSnNkRaSts5VYsBuvwHUHiT2Ez9-vh80KXD1WDQNaO03GV2Og3Klm8/exec';
 
-var PANTALLAS = ['Proyecto','Precios','Muebles','Cuarzo','Zoclo','Vistas','Accesorios','Especiales','LEDs','Electro','Resumen'];
+var PANTALLAS = ['Proyecto','Precios','Muebles','Cuarzo','Zoclo','Vistas','Accesorios','Especiales','LEDs','Electro','Guardadas','Resumen'];
 var actual = 0, DATOS = null, calcTimer = null, ULTIMO = null;
 
 // Llama a la API con fetch y credentials:'omit'.
@@ -430,8 +466,13 @@ function arrancar(d){
   ['cabecera','cuerpo','barraTotal'].forEach(function(id){
     document.getElementById(id).classList.remove('oculto');
   });
-  document.getElementById('nombreVendedor').textContent = d.vendedor.toUpperCase();
   VENDEDOR = d.vendedor;
+  ROL = d.rol || 'Vendedor';
+  document.getElementById('nombreVendedor').textContent =
+    d.vendedor.toUpperCase() + (ROL === 'Admin' ? ' · ADMIN' : '');
+  document.getElementById('subGuardadas').textContent = (ROL === 'Admin')
+    ? 'Ves las cotizaciones de todo el equipo. Al guardar una que abriste se crea una revisión nueva y la anterior se conserva.'
+    : 'Aquí están tus cotizaciones. Al guardar una que abriste se crea una revisión nueva y la anterior se conserva.';
   DATOS = d;
   Object.keys(d.precios).forEach(function(k){
     var el = document.getElementById('p_'+k);
@@ -440,6 +481,7 @@ function arrancar(d){
   activarDinero();
   addMueble();
   pintarNav();
+  revisarBorrador();
   recalcular();
 }
 
@@ -603,6 +645,154 @@ function addElectro(){
   d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
 }
 
+// ============================================================
+// AUTOGUARDADO LOCAL — sobrevive cerrar la pestaña o el navegador
+// ============================================================
+var CLAVE_BORRADOR = 'borradorCotizador';
+
+function guardarBorrador(){
+  try {
+    localStorage.setItem(CLAVE_BORRADOR, JSON.stringify({
+      cuando: Date.now(), folio: FOLIO, version: VERSION, datos: recolectar()
+    }));
+  } catch(e){}
+}
+
+function hayContenido(d){
+  return !!(d.proyecto || d.cliente || (d.muebles && d.muebles.length > 1) ||
+            Number(d.mlCocina) > 0);
+}
+
+function revisarBorrador(){
+  var crudo = null;
+  try { crudo = localStorage.getItem(CLAVE_BORRADOR); } catch(e){}
+  if(!crudo) return;
+  try {
+    var b = JSON.parse(crudo);
+    if(b && b.datos && hayContenido(b.datos)){
+      document.getElementById('borrador').style.display = 'block';
+    } else { descartarBorrador(); }
+  } catch(e){ descartarBorrador(); }
+}
+
+function restaurarBorrador(){
+  try {
+    var b = JSON.parse(localStorage.getItem(CLAVE_BORRADOR));
+    FOLIO = b.folio || ''; VERSION = b.version || 0;
+    cargarEnFormulario(b.datos);
+    pintarFolio();
+  } catch(e){ avisoError('No se pudo retomar la cotización.'); }
+  document.getElementById('borrador').style.display = 'none';
+}
+
+function descartarBorrador(){
+  try { localStorage.removeItem(CLAVE_BORRADOR); } catch(e){}
+  document.getElementById('borrador').style.display = 'none';
+}
+
+function pintarFolio(){
+  var p = document.getElementById('folioActivo');
+  if(FOLIO){
+    p.textContent = 'Editando ' + FOLIO + (VERSION ? ' · revisión ' + VERSION : '') +
+                    '. Al guardar se crea una revisión nueva.';
+    p.style.display = 'block';
+  } else { p.style.display = 'none'; }
+}
+
+// ============================================================
+// COTIZACIONES GUARDADAS
+// ============================================================
+function cargarLista(){
+  var cont = document.getElementById('listaCot');
+  cont.innerHTML = '<p class="sub">Cargando…</p>';
+  api('listar', {}, function(r){
+    if(!r.cotizaciones || !r.cotizaciones.length){
+      cont.innerHTML = '<p class="sub">Todavía no hay cotizaciones guardadas.</p>';
+      return;
+    }
+    cont.innerHTML = '';
+    r.cotizaciones.forEach(function(c){
+      var d = document.createElement('div');
+      d.className = 'cot';
+      d.innerHTML =
+        '<div class="izq">' +
+          '<div class="fol">' + c.folio + (c.version > 1 ? ' · rev ' + c.version : '') + '</div>' +
+          '<div class="pry">' + (c.proyecto || 'Sin nombre') + '</div>' +
+          '<div class="meta">' + (c.cliente || '—') + ' · ' + c.fecha +
+            (ROL === 'Admin' ? ' · ' + c.vendedor : '') + '</div>' +
+        '</div>' +
+        '<div class="tot">' + money(c.total) + '</div>';
+      d.onclick = function(){ abrirCot(c.folio); };
+      cont.appendChild(d);
+    });
+  }, function(msg){ cont.innerHTML = '<p class="sub">No se pudo cargar: ' + msg + '</p>'; });
+}
+
+function abrirCot(folio){
+  api('abrir', {folio: folio}, function(r){
+    FOLIO = r.folio; VERSION = r.version;
+    cargarEnFormulario(r.datos);
+    pintarFolio();
+    ir(0);
+  }, function(msg){ avisoError('No se pudo abrir: ' + msg); });
+}
+
+// Vuelve a construir todas las tarjetas y campos a partir de unos datos
+function cargarEnFormulario(d){
+  function set(id, val){
+    var el = document.getElementById(id);
+    if(el) el.value = (val === undefined || val === null) ? '' : val;
+  }
+  ['proyecto','cliente','detalles','mlCocina','diasFabricacionExtra','diasInstalacionExtra',
+   'cuarzoPlacas','cuarzoMl','zocloMl','ledMl','tipoApagador','detallesLed'].forEach(function(k){
+    set(k, d[k]);
+  });
+  var vi = document.getElementById('viaticos');
+  if(vi){ vi.value = Number(d.viaticos) ? Number(d.viaticos).toLocaleString('es-MX') : '0'; }
+  var pa = document.getElementById('precioApagador');
+  if(pa){ pa.value = Number(d.precioApagador) ? Number(d.precioApagador).toLocaleString('es-MX') : '0'; }
+
+  document.getElementById('muebles').innerHTML = '';
+  (d.muebles || []).forEach(function(m){
+    addMueble();
+    var t = document.querySelector('#muebles .tarjeta:last-child');
+    t.querySelector('.m-cat').value = m.cat;
+    llenarVariantes(t);
+    t.querySelector('.m-var').value = m.var;
+    ajustarCajon(t);
+    t.querySelector('.m-cant').value = m.cantidad;
+    if(m.modeloCajon) t.querySelector('.m-caj').value = m.modeloCajon;
+  });
+  if(!document.querySelector('#muebles .tarjeta')) addMueble();
+
+  document.getElementById('vistas').innerHTML = '';
+  (d.vistas || []).forEach(function(v){
+    addVista();
+    var t = document.querySelector('#vistas .tarjeta:last-child');
+    t.querySelector('.v-desc').value = v.descripcion || '';
+    t.querySelector('.v-largo').value = v.largo || 0;
+    t.querySelector('.v-ancho').value = v.ancho || 0;
+    pintarM2(t);
+  });
+
+  function repoblar(contId, agregar, sel, filas){
+    document.getElementById(contId).innerHTML = '';
+    (filas || []).forEach(function(x){
+      agregar();
+      var t = document.querySelector('#' + contId + ' .tarjeta:last-child');
+      t.querySelector(sel[0]).value = x.descripcion || '';
+      t.querySelector(sel[1]).value = x.cantidad || 0;
+      t.querySelector(sel[2]).value = Number(x.precioUnitario)
+        ? Number(x.precioUnitario).toLocaleString('es-MX') : '0';
+    });
+  }
+  repoblar('accesorios', addAccesorio, ['.a-desc','.a-cant','.a-precio'], d.accesorios);
+  repoblar('especiales', addEspecial, ['.x-desc','.x-cant','.x-precio'], d.especiales);
+  repoblar('electro', addElectro, ['.e-desc','.e-cant','.e-precio'], d.electrodomesticos);
+
+  recalcular();
+}
+
 function recolectar(){
   var muebles = [];
   document.querySelectorAll('#muebles .tarjeta').forEach(function(t){
@@ -663,6 +853,8 @@ function recolectar(){
 }
 
 function recalcular(){
+  clearTimeout(guardTimer);
+  guardTimer = setTimeout(guardarBorrador, 600);
   clearTimeout(calcTimer);
   calcTimer = setTimeout(function(){
     api('calcular', recolectar(), function(r){
@@ -705,9 +897,15 @@ function pintarResumen(){
 
 function guardar(){
   document.getElementById('okGuardar').textContent = 'Guardando…';
-  api('guardarCotizacion', recolectar(), function(res){
-    document.getElementById('okGuardar').textContent = 'Guardada en la hoja "' + res.hoja + '".';
-    setTimeout(function(){ document.getElementById('okGuardar').textContent=''; }, 5000);
+  var payload = recolectar();
+  if(FOLIO) payload.folio = FOLIO;
+  api('guardarCotizacion', payload, function(res){
+    FOLIO = res.folio; VERSION = res.version;
+    pintarFolio();
+    descartarBorrador();
+    document.getElementById('okGuardar').textContent =
+      'Guardada como ' + res.folio + (res.version > 1 ? ' revisión ' + res.version : '') + '.';
+    setTimeout(function(){ document.getElementById('okGuardar').textContent=''; }, 6000);
   }, function(msg){
     document.getElementById('okGuardar').textContent = '';
     avisoError('No se pudo guardar: ' + msg);
