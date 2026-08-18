@@ -341,33 +341,32 @@ var actual = 0, DATOS = null, calcTimer = null, ULTIMO = null;
 var jsonpN = 0;
 
 function api(accion, datos, alTerminar, alFallar){
-  var cuerpo = JSON.stringify({
-    accion: accion,
-    pin: PIN,
-    datos: datos || {}
-  });
+  var url = API + '?accion=' + encodeURIComponent(accion) +
+            '&pin=' + encodeURIComponent(PIN) +
+            '&datos=' + encodeURIComponent(JSON.stringify(datos || {}));
 
-  fetch(API, {
-    method: 'POST',
-    credentials: 'omit',        // <- sin cookies de Google
-    redirect: 'follow',
-    headers: {'Content-Type': 'text/plain;charset=utf-8'},  // evita el preflight de CORS
-    body: cuerpo
-  })
-  .then(function(r){
-    if(!r.ok) throw new Error('HTTP ' + r.status);
-    return r.text();
-  })
-  .then(function(txt){
-    var res;
-    try { res = JSON.parse(txt); }
-    catch(e){ throw new Error('Respuesta inesperada del servidor'); }
-    if(res && res.error){ if(alFallar) alFallar(res.error); return; }
-    if(alTerminar) alTerminar(res);
-  })
-  .catch(function(){
-    apiJsonp(accion, datos, alTerminar, alFallar);
-  });
+  // GET (no POST): Apps Script redirige a googleusercontent, y Safari en Mac
+  // no sigue bien esa redirección cuando la petición es POST.
+  // credentials:'omit' evita que se manden las cookies de Google, que era
+  // lo que rompía la app en iPhone con varias cuentas abiertas.
+  fetch(url, {method: 'GET', credentials: 'omit', redirect: 'follow'})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    })
+    .then(function(txt){
+      var res;
+      try { res = JSON.parse(txt); }
+      catch(e){ throw new Error('Respuesta inesperada del servidor'); }
+      if(res && res.error){ if(alFallar) alFallar(res.error); return; }
+      if(alTerminar) alTerminar(res);
+    })
+    .catch(function(e){
+      // Último recurso: JSONP
+      apiJsonp(accion, datos, alTerminar, function(msg2){
+        if(alFallar) alFallar(msg2 + ' | fetch: ' + (e && e.message ? e.message : e));
+      });
+    });
 }
 
 function apiJsonp(accion, datos, alTerminar, alFallar){
@@ -393,9 +392,9 @@ function apiJsonp(accion, datos, alTerminar, alFallar){
 
 function avisoError(msg){
   var b = document.getElementById('aviso');
-  b.textContent = msg;
+  b.textContent = msg + '   (toca para cerrar)';
   b.style.display = 'block';
-  setTimeout(function(){ b.style.display = 'none'; }, 6000);
+  b.onclick = function(){ b.style.display = 'none'; };
 }
 
 function money(n){ return '$' + Math.round(n||0).toLocaleString('es-MX'); }
@@ -801,6 +800,35 @@ function cargarEnFormulario(d){
   recalcular();
 }
 
+// Convierte los datos al formato corto que viaja al servidor.
+// conTextos=false para calcular (las descripciones no afectan el precio),
+// true para guardar. Así una cocina de 50 muebles sigue cabiendo.
+function compactar(conTextos){
+  var d = recolectar();
+  function txt(s){ return conTextos ? (s || '') : ''; }
+
+  var idxCat = {}, idxCaj = {};
+  DATOS.catalogo.forEach(function(c, i){ idxCat[c.cat + '|' + c.var] = i; });
+  DATOS.modelosCajon.forEach(function(m, i){ idxCaj[m.nombre] = i; });
+
+  return {
+    __c: 1,
+    f: FOLIO || '',
+    p: d.proyecto, cl: d.cliente, dt: txt(d.detalles),
+    ml: d.mlCocina, xf: d.diasFabricacionExtra, xi: d.diasInstalacionExtra,
+    vi: d.viaticos,
+    m: d.muebles.map(function(x){
+      return [idxCat[x.cat + '|' + x.var], x.cantidad, idxCaj[x.modeloCajon]];
+    }),
+    cp: d.cuarzoPlacas, cm: d.cuarzoMl, z: d.zocloMl,
+    v:  d.vistas.map(function(x){ return [x.largo, x.ancho, txt(x.descripcion)]; }),
+    a:  d.accesorios.map(function(x){ return [x.cantidad, x.precioUnitario, txt(x.descripcion)]; }),
+    es: d.especiales.map(function(x){ return [x.cantidad, x.precioUnitario, txt(x.descripcion)]; }),
+    el: d.electrodomesticos.map(function(x){ return [x.cantidad, x.precioUnitario, txt(x.descripcion)]; }),
+    lm: d.ledMl, ta: d.tipoApagador, pa: d.precioApagador, dl: txt(d.detallesLed)
+  };
+}
+
 function recolectar(){
   var muebles = [];
   document.querySelectorAll('#muebles .tarjeta').forEach(function(t){
@@ -865,7 +893,7 @@ function recalcular(){
   guardTimer = setTimeout(guardarBorrador, 600);
   clearTimeout(calcTimer);
   calcTimer = setTimeout(function(){
-    api('calcular', recolectar(), function(r){
+    api('calcular', compactar(false), function(r){
       ULTIMO = r;
       document.getElementById('totalVivo').textContent = money(r.total);
       var df = Math.round(r.dias.fabricacion * 10) / 10;
@@ -905,9 +933,7 @@ function pintarResumen(){
 
 function guardar(){
   document.getElementById('okGuardar').textContent = 'Guardando…';
-  var payload = recolectar();
-  if(FOLIO) payload.folio = FOLIO;
-  api('guardarCotizacion', payload, function(res){
+  api('guardarCotizacion', compactar(true), function(res){
     FOLIO = res.folio; VERSION = res.version;
     pintarFolio();
     descartarBorrador();
