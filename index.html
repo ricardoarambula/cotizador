@@ -339,6 +339,7 @@ var actual = 0, DATOS = null, calcTimer = null, ULTIMO = null;
 // que es lo que provocaba el selector de cuenta cuando hay varias sesiones
 // abiertas. Es el mismo efecto que navegar en privado, pero permanente.
 // Si fetch falla (red o navegador viejo), cae a JSONP como respaldo.
+var PIN = '', VENDEDOR = '', ROL = '', FOLIO = '', VERSION = 0, guardTimer = null;
 var jsonpN = 0;
 
 function api(accion, datos, alTerminar, alFallar){
