@@ -143,6 +143,21 @@
     margin:-6px 0 12px;display:flex;justify-content:space-between;align-items:center}
   #quien button{background:none;border:none;color:var(--roble);font-size:11px;
     text-decoration:underline;cursor:pointer;padding:4px}
+  #capa{display:none;position:fixed;inset:0;z-index:70;background:rgba(10,12,14,.72);
+    align-items:center;justify-content:center;padding:24px}
+  #capa.abierta{display:flex}
+  #dialogo{background:var(--tinta-2);border:1px solid var(--linea);border-radius:4px;
+    padding:20px;max-width:400px;width:100%}
+  #dialogo h3{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:600;
+    color:var(--papel);margin:0 0 8px;letter-spacing:.03em}
+  #dialogo p{color:var(--tenue);font-size:13.5px;line-height:1.55;margin:0 0 18px}
+  #dialogo .botones{display:flex;flex-direction:column;gap:8px}
+  #dialogo button{width:100%;padding:13px;border-radius:3px;cursor:pointer;
+    font-family:'Barlow Condensed',sans-serif;font-size:15px;letter-spacing:.05em;
+    text-transform:uppercase;border:1px solid var(--linea);background:none;color:var(--texto)}
+  #dialogo button.si{background:var(--roble);border-color:var(--roble);
+    color:#1a1207;font-weight:600}
+  #dialogo button.tenue{color:var(--tenue);border-color:transparent}
   #aviso{display:none;position:fixed;left:12px;right:12px;
     bottom:calc(86px + var(--seguro-abajo));z-index:40;
     background:#7a2e2e;color:#fff;padding:12px 14px;border-radius:4px;
@@ -165,7 +180,7 @@
 
 <header class="oculto" id="cabecera">
   <h1>Cotizador <span>/ Integral Design</span></h1>
-  <div id="quien"><span id="nombreVendedor"></span><button onclick="salir()">Salir</button></div>
+  <div id="quien"><span id="nombreVendedor"></span><span><button onclick="nuevaCotizacion()">Nueva cotización</button><button onclick="salir()">Salir</button></span></div>
   <nav id="nav"></nav>
 </header>
 
@@ -309,6 +324,18 @@
     <p class="ok" id="okGuardar"></p>
   </section>
 </main>
+
+<div id="capa">
+  <div id="dialogo">
+    <h3>Nueva cotización</h3>
+    <p id="dlgTexto"></p>
+    <div class="botones">
+      <button class="si" onclick="limpiarGuardando()">Guardar y empezar</button>
+      <button onclick="limpiarSinGuardar()">Empezar sin guardar</button>
+      <button class="tenue" onclick="cerrarDialogo()">Cancelar</button>
+    </div>
+  </div>
+</div>
 
 <div id="aviso"></div>
 
@@ -928,7 +955,63 @@ function pintarResumen(){
   }).join('');
 }
 
-function guardar(){
+// ============================================================
+// NUEVA COTIZACIÓN — limpia el formulario, no toca el Sheets
+// ============================================================
+function nuevaCotizacion(){
+  var d = recolectar();
+  var txt = document.getElementById('dlgTexto');
+  if(!hayContenido(d)){
+    limpiarFormulario();   // no hay nada que perder
+    return;
+  }
+  txt.textContent = FOLIO
+    ? 'Estás editando ' + FOLIO + '. ¿Guardas los cambios antes de empezar una cotización nueva? Lo guardado en el Sheets no se borra.'
+    : 'Tienes una cotización sin guardar. ¿La guardas antes de empezar una nueva?';
+  document.getElementById('capa').classList.add('abierta');
+}
+
+function cerrarDialogo(){
+  document.getElementById('capa').classList.remove('abierta');
+}
+
+function limpiarGuardando(){
+  cerrarDialogo();
+  guardar(function(){ limpiarFormulario(); });
+}
+
+function limpiarSinGuardar(){
+  cerrarDialogo();
+  limpiarFormulario();
+}
+
+function limpiarFormulario(){
+  FOLIO = ''; VERSION = 0; ULTIMO = null;
+  descartarBorrador();
+
+  ['proyecto','cliente','detalles','detallesLed'].forEach(function(id){
+    document.getElementById(id).value = '';
+  });
+  ['mlCocina','diasFabricacionExtra','diasInstalacionExtra','cuarzoPlacas',
+   'cuarzoMl','zocloMl','ledMl'].forEach(function(id){
+    document.getElementById(id).value = 0;
+  });
+  document.getElementById('viaticos').value = '0';
+  document.getElementById('precioApagador').value = '0';
+  document.getElementById('tipoApagador').selectedIndex = 0;
+
+  ['muebles','vistas','accesorios','especiales','electro'].forEach(function(id){
+    document.getElementById(id).innerHTML = '';
+  });
+  addMueble();
+
+  document.getElementById('okGuardar').textContent = '';
+  pintarFolio();
+  ir(0);
+  recalcular();
+}
+
+function guardar(alTerminar){
   document.getElementById('okGuardar').textContent = 'Guardando…';
   api('guardarCotizacion', compactar(true), function(res){
     FOLIO = res.folio; VERSION = res.version;
@@ -937,6 +1020,7 @@ function guardar(){
     document.getElementById('okGuardar').textContent =
       'Guardada como ' + res.folio + (res.version > 1 ? ' revisión ' + res.version : '') + '.';
     setTimeout(function(){ document.getElementById('okGuardar').textContent=''; }, 6000);
+    if(typeof alTerminar === 'function') alTerminar();
   }, function(msg){
     document.getElementById('okGuardar').textContent = '';
     avisoError('No se pudo guardar: ' + msg);
