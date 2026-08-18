@@ -198,6 +198,7 @@
     </div>
     <p class="nota">Los días los calcula el sistema con los muebles capturados y los metros
     lineales. Si la obra lo exige puedes agregar días extra; quedan registrados en la cotización.</p>
+    <button class="agregar" style="margin-bottom:16px" onclick="diagnostico()">Probar conexión</button>
     <div class="campo"><label>Viáticos (solo si es fuera de la ciudad)</label>
       <div class="pesos"><input id="viaticos" class="dinero" inputmode="decimal" value="0"></div>
     </div>
@@ -803,6 +804,38 @@ function cargarEnFormulario(d){
 // Convierte los datos al formato corto que viaja al servidor.
 // conTextos=false para calcular (las descripciones no afectan el precio),
 // true para guardar. Así una cocina de 50 muebles sigue cabiendo.
+// Diagnóstico: muestra exactamente qué pasa al llamar a la API.
+function diagnostico(){
+  var b = document.getElementById('aviso');
+  b.style.display = 'block';
+  b.onclick = function(){ b.style.display = 'none'; };
+  b.textContent = 'Probando…';
+
+  var carga;
+  try { carga = compactar(false); }
+  catch(e){ b.textContent = '1) compactar() falló: ' + (e && e.message ? e.message : e); return; }
+
+  var url = API + '?accion=calcular&pin=' + encodeURIComponent(PIN) +
+            '&datos=' + encodeURIComponent(JSON.stringify(carga));
+
+  b.textContent = '2) URL de ' + url.length + ' caracteres. Enviando…';
+
+  fetch(url, {method:'GET', credentials:'omit', redirect:'follow'})
+    .then(function(r){
+      return r.text().then(function(t){
+        return {status: r.status, ok: r.ok, texto: t};
+      });
+    })
+    .then(function(x){
+      b.textContent = '3) HTTP ' + x.status + ' · respuesta: ' +
+                      x.texto.substring(0, 400) + '   (toca para cerrar)';
+    })
+    .catch(function(e){
+      b.textContent = '3) fetch falló: ' + (e && e.message ? e.message : e) +
+                      '   (toca para cerrar)';
+    });
+}
+
 function compactar(conTextos){
   var d = recolectar();
   function txt(s){ return conTextos ? (s || '') : ''; }
