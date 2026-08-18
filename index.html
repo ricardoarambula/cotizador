@@ -109,6 +109,12 @@
   .cot .pry{color:var(--papel);font-size:14.5px;margin:2px 0 1px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cot .meta{color:var(--tenue);font-size:11.5px}
+  .cot{cursor:default}
+  .cot .acciones{display:flex;gap:7px;margin-top:9px}
+  .cot .acciones button{padding:7px 12px;border-radius:3px;cursor:pointer;
+    font-family:'Barlow Condensed',sans-serif;font-size:12.5px;letter-spacing:.05em;
+    text-transform:uppercase;border:1px solid var(--linea);background:none;color:var(--tenue)}
+  .cot .acciones .rec{border-color:var(--roble);color:var(--roble-claro)}
   .cot .tot{font-family:'Barlow Condensed',sans-serif;font-size:17px;
     color:var(--roble-claro);white-space:nowrap;font-variant-numeric:tabular-nums}
   #borrador{display:none;background:var(--tinta-2);border:1px solid var(--roble);
@@ -327,13 +333,9 @@
 
 <div id="capa">
   <div id="dialogo">
-    <h3>Nueva cotización</h3>
+    <h3 id="dlgTitulo"></h3>
     <p id="dlgTexto"></p>
-    <div class="botones">
-      <button class="si" onclick="limpiarGuardando()">Guardar y empezar</button>
-      <button onclick="limpiarSinGuardar()">Empezar sin guardar</button>
-      <button class="tenue" onclick="cerrarDialogo()">Cancelar</button>
-    </div>
+    <div class="botones" id="dlgBotones"></div>
   </div>
 </div>
 
@@ -751,12 +753,51 @@ function cargarLista(){
           '<div class="pry">' + (c.proyecto || 'Sin nombre') + '</div>' +
           '<div class="meta">' + (c.cliente || '—') + ' · ' + c.fecha +
             (ROL === 'Admin' ? ' · ' + c.vendedor : '') + '</div>' +
+          '<div class="acciones">' +
+            '<button class="rec">Recuperar</button>' +
+            '<button class="arc">Archivar</button>' +
+          '</div>' +
         '</div>' +
         '<div class="tot">' + money(c.total) + '</div>';
-      d.onclick = function(){ abrirCot(c.folio); };
+      d.querySelector('.rec').onclick = function(){ pedirRecuperar(c); };
+      d.querySelector('.arc').onclick = function(){ pedirArchivar(c); };
       cont.appendChild(d);
     });
   }, function(msg){ cont.innerHTML = '<p class="sub">No se pudo cargar: ' + msg + '</p>'; });
+}
+
+function pedirRecuperar(c){
+  var etiqueta = c.folio + ' · ' + (c.proyecto || 'Sin nombre');
+  if(hayContenido(recolectar())){
+    dialogo('Recuperar cotización',
+      'Vas a abrir ' + etiqueta + '. Lo que tienes capturado ahora y no has guardado se va a perder.',
+      [
+        {texto: 'Guardar lo actual y abrir', estilo: 'si',
+         accion: function(){ guardar(function(){ abrirCot(c.folio); }); }},
+        {texto: 'Abrir sin guardar', accion: function(){ abrirCot(c.folio); }},
+        {texto: 'Cancelar', estilo: 'tenue'}
+      ]);
+  } else {
+    abrirCot(c.folio);
+  }
+}
+
+function pedirArchivar(c){
+  dialogo('Archivar cotización',
+    'Vas a archivar ' + c.folio + ' · ' + (c.proyecto || 'Sin nombre') + '. ' +
+    'Va a desaparecer de esta lista y no la vas a poder recuperar desde la app. ' +
+    'Esta acción no se puede deshacer aquí.',
+    [
+      {texto: 'Sí, archivar', estilo: 'si', accion: function(){ archivarCot(c.folio); }},
+      {texto: 'Cancelar', estilo: 'tenue'}
+    ]);
+}
+
+function archivarCot(folio){
+  api('archivar', {folio: folio}, function(){
+    if(FOLIO === folio){ FOLIO = ''; VERSION = 0; pintarFolio(); }
+    cargarLista();
+  }, function(msg){ avisoError('No se pudo archivar: ' + msg); });
 }
 
 function abrirCot(folio){
@@ -958,17 +999,36 @@ function pintarResumen(){
 // ============================================================
 // NUEVA COTIZACIÓN — limpia el formulario, no toca el Sheets
 // ============================================================
+// Diálogo reutilizable: opciones = [{texto, estilo, accion}, ...]
+function dialogo(titulo, texto, opciones){
+  document.getElementById('dlgTitulo').textContent = titulo;
+  document.getElementById('dlgTexto').textContent = texto;
+  var cont = document.getElementById('dlgBotones');
+  cont.innerHTML = '';
+  opciones.forEach(function(o){
+    var b = document.createElement('button');
+    b.textContent = o.texto;
+    if(o.estilo) b.className = o.estilo;
+    b.onclick = function(){ cerrarDialogo(); if(o.accion) o.accion(); };
+    cont.appendChild(b);
+  });
+  document.getElementById('capa').classList.add('abierta');
+}
+
 function nuevaCotizacion(){
-  var d = recolectar();
-  var txt = document.getElementById('dlgTexto');
-  if(!hayContenido(d)){
+  if(!hayContenido(recolectar())){
     limpiarFormulario();   // no hay nada que perder
     return;
   }
-  txt.textContent = FOLIO
-    ? 'Estás editando ' + FOLIO + '. ¿Guardas los cambios antes de empezar una cotización nueva? Lo guardado en el Sheets no se borra.'
-    : 'Tienes una cotización sin guardar. ¿La guardas antes de empezar una nueva?';
-  document.getElementById('capa').classList.add('abierta');
+  dialogo('Nueva cotización',
+    FOLIO
+      ? 'Estás editando ' + FOLIO + '. ¿Guardas los cambios antes de empezar una cotización nueva? Lo guardado en el Sheets no se borra.'
+      : 'Tienes una cotización sin guardar. ¿La guardas antes de empezar una nueva?',
+    [
+      {texto: 'Guardar y empezar', estilo: 'si', accion: limpiarGuardando},
+      {texto: 'Empezar sin guardar', accion: limpiarFormulario},
+      {texto: 'Cancelar', estilo: 'tenue'}
+    ]);
 }
 
 function cerrarDialogo(){
@@ -976,13 +1036,7 @@ function cerrarDialogo(){
 }
 
 function limpiarGuardando(){
-  cerrarDialogo();
   guardar(function(){ limpiarFormulario(); });
-}
-
-function limpiarSinGuardar(){
-  cerrarDialogo();
-  limpiarFormulario();
 }
 
 function limpiarFormulario(){
