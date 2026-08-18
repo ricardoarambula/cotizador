@@ -405,10 +405,18 @@ function formatearDinero(el){
   var n = limpiar(el.value);
   el.value = n ? n.toLocaleString('es-MX') : '';
 }
+// 'change' solo se dispara al salir del campo; 'input' lo hace al teclear.
+// Como recalcular() ya viene con retardo, escuchar los dos no satura la API.
+function escuchar(el, fn){
+  el.addEventListener('input', fn);
+  el.addEventListener('change', fn);
+}
+
 function activarDinero(raiz){
   (raiz || document).querySelectorAll('.dinero').forEach(function(el){
     if(el.dataset.listo) return;
     el.dataset.listo = '1';
+    el.addEventListener('input', recalcular);
     el.addEventListener('blur', function(){ formatearDinero(el); recalcular(); });
     el.addEventListener('focus', function(){ el.value = limpiar(el.value) || ''; });
   });
@@ -550,7 +558,7 @@ function addMueble(){
   llenarVariantes(d);
   ajustarCajon(d);
   d.querySelectorAll('select,input').forEach(function(el){
-    el.addEventListener('change', recalcular);
+    escuchar(el, recalcular);
   });
 }
 function llenarVariantes(t){
@@ -585,7 +593,7 @@ function addVista(){
   c.appendChild(d);
   d.querySelectorAll('input').forEach(function(el){
     el.addEventListener('input', function(){ pintarM2(d); });
-    el.addEventListener('change', recalcular);
+    escuchar(el, recalcular);
   });
 }
 function pintarM2(t){
@@ -608,7 +616,7 @@ function addAccesorio(){
     '</div>';
   c.appendChild(d);
   activarDinero(d);
-  d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
+  d.querySelectorAll('input').forEach(function(el){ escuchar(el, recalcular); });
 }
 function addEspecial(){
   var c = document.getElementById('especiales');
@@ -625,7 +633,7 @@ function addEspecial(){
     '</div>';
   c.appendChild(d);
   activarDinero(d);
-  d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
+  d.querySelectorAll('input').forEach(function(el){ escuchar(el, recalcular); });
 }
 
 function addElectro(){
@@ -642,7 +650,7 @@ function addElectro(){
     '</div>';
   c.appendChild(d);
   activarDinero(d);
-  d.querySelectorAll('input').forEach(function(el){ el.addEventListener('change', recalcular); });
+  d.querySelectorAll('input').forEach(function(el){ escuchar(el, recalcular); });
 }
 
 // ============================================================
@@ -913,7 +921,7 @@ function guardar(){
 }
 
 document.querySelectorAll('#s0 input, #s3 input, #s4 input, #s8 input, #s8 select, #s8 textarea')
-  .forEach(function(el){ el.addEventListener('change', recalcular); });
+  .forEach(function(el){ escuchar(el, recalcular); });
 </script>
 </body>
 </html>
