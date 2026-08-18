@@ -385,10 +385,12 @@ var actual = 0, DATOS = null, calcTimer = null, ULTIMO = null;
 var PIN = '', VENDEDOR = '', ROL = '', FOLIO = '', VERSION = 0, guardTimer = null;
 var jsonpN = 0;
 
-function api(accion, datos, alTerminar, alFallar){
+function api(accion, datos, alTerminar, alFallar, intento){
+  intento = intento || 1;
   var url = API + '?accion=' + encodeURIComponent(accion) +
             '&pin=' + encodeURIComponent(PIN) +
-            '&datos=' + encodeURIComponent(JSON.stringify(datos || {}));
+            '&datos=' + encodeURIComponent(JSON.stringify(datos || {})) +
+            '&t=' + Date.now();   // evita respuestas viejas en caché
 
   // GET (no POST): Apps Script redirige a googleusercontent, y Safari en Mac
   // no sigue bien esa redirección cuando la petición es POST.
@@ -407,6 +409,14 @@ function api(accion, datos, alTerminar, alFallar){
       if(alTerminar) alTerminar(res);
     })
     .catch(function(e){
+      // Apps Script devuelve 404 o corta la conexión de vez en cuando
+      // cuando le llegan peticiones seguidas. Se reintenta antes de rendirse.
+      if(intento < 3){
+        setTimeout(function(){
+          api(accion, datos, alTerminar, alFallar, intento + 1);
+        }, intento * 700);
+        return;
+      }
       // Último recurso: JSONP
       apiJsonp(accion, datos, alTerminar, function(msg2){
         if(alFallar) alFallar(msg2 + ' | fetch: ' + (e && e.message ? e.message : e));
@@ -988,12 +998,15 @@ function recolectar(){
   };
 }
 
+var calcSeq = 0;
 function recalcular(){
   clearTimeout(guardTimer);
   guardTimer = setTimeout(guardarBorrador, 600);
   clearTimeout(calcTimer);
   calcTimer = setTimeout(function(){
+    var mio = ++calcSeq;
     api('calcular', compactar(false), function(r){
+      if(mio !== calcSeq) return;   // llegó tarde: ya hay una petición más nueva
       ULTIMO = r;
       document.getElementById('totalVivo').textContent = money(r.total);
       var df = Math.round(r.dias.fabricacion * 10) / 10;
@@ -1002,8 +1015,11 @@ function recalcular(){
       document.getElementById('verDiasInst').textContent =
         r.dias.instalacion + (r.dias.instalacion === 1 ? ' día' : ' días');
       if(actual === PANTALLAS.length-1) pintarResumen();
-    }, function(msg){ avisoError('No se pudo calcular: ' + msg); });
-  }, 350);
+    }, function(msg){
+      if(mio !== calcSeq) return;
+      avisoError('No se pudo calcular: ' + msg);
+    });
+  }, 500);
 }
 
 function pintarResumen(){
