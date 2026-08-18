@@ -205,20 +205,21 @@
     <div class="campo"><label>Nombre del proyecto</label><input id="proyecto"></div>
     <div class="campo"><label>Cliente</label><input id="cliente"></div>
     <div class="campo"><label>Detalles</label><input id="detalles" placeholder="Dirección, zona, notas"></div>
-    <div class="campo"><label>Metros lineales de cocina (necesarios para calcular días de instalación)</label>
+    <div class="campo"><label>Metros lineales de cocina</label>
       <input id="mlCocina" type="number" inputmode="decimal" step="0.1" value="0"></div>
     <div class="calc" style="margin-bottom:16px">
       <span>Días de fabricación</span><b id="verDiasFab">0</b></div>
     <div class="calc" style="margin-bottom:16px">
       <span>Días de instalación</span><b id="verDiasInst">0</b></div>
     <div class="fila">
-      <div class="campo"><label>Días extra de fabricación</label>
+      <div class="campo"><label>Días adicionales de fabricación</label>
         <input id="diasFabricacionExtra" type="number" inputmode="numeric" min="0" value="0"></div>
-      <div class="campo"><label>Días extra de instalación</label>
+      <div class="campo"><label>Días adicionales de instalación</label>
         <input id="diasInstalacionExtra" type="number" inputmode="numeric" min="0" value="0"></div>
     </div>
-    <p class="nota">Los días los calcula el sistema con los muebles capturados y los metros
-    lineales. Si la obra lo exige puedes agregar días extra; quedan registrados en la cotización.</p>
+    <p class="nota">Los días se calculan con los muebles del catálogo y los metros lineales.
+    En proyectos que no son cocina modular, o cuando la obra lo exige, captúralos aquí.
+    Quedan registrados en la cotización.</p>
     <div class="campo"><label>Viáticos (solo si es fuera de la ciudad)</label>
       <div class="pesos"><input id="viaticos" class="dinero" inputmode="decimal" value="0"></div>
     </div>
@@ -247,7 +248,25 @@
     <h2>Muebles</h2>
     <p class="sub">Las bisagras y los cajones se cuentan solos según el tipo.</p>
     <div id="muebles"></div>
-    <button class="agregar" onclick="addMueble()">+ Agregar mueble</button>
+    <button class="agregar" onclick="addMueble()">+ Agregar mueble del catálogo</button>
+
+    <h2 style="margin-top:30px">Piezas sueltas</h2>
+    <p class="sub">Para proyectos que no son cocina modular — un mueble de TV, un closet, una barra.
+    Captura aquí las piezas directamente y pon los días en la pantalla Proyecto.</p>
+    <div class="fila">
+      <div class="campo"><label>Tableros interiores</label>
+        <input id="tablerosInterior" type="number" inputmode="decimal" step="0.5" value="0"></div>
+      <div class="campo"><label>Tableros de frente</label>
+        <input id="tablerosFrente" type="number" inputmode="decimal" step="0.5" value="0"></div>
+    </div>
+    <div class="campo"><label>Bisagras</label>
+      <input id="bisagrasSueltas" type="number" inputmode="numeric" value="0"></div>
+    <div class="fila">
+      <div class="campo"><label>Cajones</label>
+        <input id="cajonesSueltos" type="number" inputmode="numeric" value="0"></div>
+      <div class="campo"><label>Modelo de cajón</label>
+        <select id="modeloCajonSuelto"></select></div>
+    </div>
   </section>
 
   <section id="s3">
@@ -512,7 +531,16 @@ function arrancar(d){
     if(el){ el.value = d.precios[k] ? Number(d.precios[k]).toLocaleString('es-MX') : ''; }
   });
   activarDinero();
-  addMueble();
+  var selS = document.getElementById('modeloCajonSuelto');
+  selS.innerHTML = '';
+  DATOS.modelosCajon.forEach(function(m){
+    var o = document.createElement('option'); o.value = m.nombre; o.textContent = m.nombre;
+    selS.appendChild(o);
+  });
+  escuchar(selS, recalcular);
+  ['tablerosInterior','tablerosFrente','bisagrasSueltas','cajonesSueltos'].forEach(function(id){
+    escuchar(document.getElementById(id), recalcular);
+  });
   pintarNav();
   revisarBorrador();
   recalcular();
@@ -816,6 +844,7 @@ function cargarEnFormulario(d){
     if(el) el.value = (val === undefined || val === null) ? '' : val;
   }
   ['proyecto','cliente','detalles','mlCocina','diasFabricacionExtra','diasInstalacionExtra',
+   'tablerosInterior','tablerosFrente','bisagrasSueltas','cajonesSueltos','modeloCajonSuelto',
    'cuarzoPlacas','cuarzoMl','zocloMl','ledMl','tipoApagador','detallesLed'].forEach(function(k){
     set(k, d[k]);
   });
@@ -835,7 +864,7 @@ function cargarEnFormulario(d){
     t.querySelector('.m-cant').value = m.cantidad;
     if(m.modeloCajon) t.querySelector('.m-caj').value = m.modeloCajon;
   });
-  if(!document.querySelector('#muebles .tarjeta')) addMueble();
+
 
   document.getElementById('vistas').innerHTML = '';
   (d.vistas || []).forEach(function(v){
@@ -885,6 +914,9 @@ function compactar(conTextos){
     m: d.muebles.map(function(x){
       return [idxCat[x.cat + '|' + x.var], x.cantidad, idxCaj[x.modeloCajon]];
     }),
+    ti: d.tablerosInterior, tf: d.tablerosFrente,
+    bs: d.bisagrasSueltas, cs: d.cajonesSueltos,
+    mcs: idxCaj[d.modeloCajonSuelto],
     cp: d.cuarzoPlacas, cm: d.cuarzoMl, z: d.zocloMl,
     v:  d.vistas.map(function(x){ return [x.largo, x.ancho, txt(x.descripcion)]; }),
     a:  d.accesorios.map(function(x){ return [x.cantidad, x.precioUnitario, txt(x.descripcion)]; }),
@@ -944,6 +976,9 @@ function recolectar(){
     diasInstalacionExtra: v('diasInstalacionExtra'),
     viaticos: valorDinero('viaticos'),
     muebles: muebles,
+    tablerosInterior: v('tablerosInterior'), tablerosFrente: v('tablerosFrente'),
+    bisagrasSueltas: v('bisagrasSueltas'), cajonesSueltos: v('cajonesSueltos'),
+    modeloCajonSuelto: v('modeloCajonSuelto'),
     cuarzoPlacas: v('cuarzoPlacas'), cuarzoMl: v('cuarzoMl'),
     zocloMl: v('zocloMl'),
     vistas: vistas, accesorios: accesorios, especiales: especiales,
@@ -1047,7 +1082,8 @@ function limpiarFormulario(){
     document.getElementById(id).value = '';
   });
   ['mlCocina','diasFabricacionExtra','diasInstalacionExtra','cuarzoPlacas',
-   'cuarzoMl','zocloMl','ledMl'].forEach(function(id){
+   'cuarzoMl','zocloMl','ledMl','tablerosInterior','tablerosFrente',
+   'bisagrasSueltas','cajonesSueltos'].forEach(function(id){
     document.getElementById(id).value = 0;
   });
   document.getElementById('viaticos').value = '0';
@@ -1057,8 +1093,6 @@ function limpiarFormulario(){
   ['muebles','vistas','accesorios','especiales','electro'].forEach(function(id){
     document.getElementById(id).innerHTML = '';
   });
-  addMueble();
-
   document.getElementById('okGuardar').textContent = '';
   pintarFolio();
   ir(0);
